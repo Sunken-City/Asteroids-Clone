@@ -1,46 +1,38 @@
 #include "Game/Asteroid.hpp"
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <gl/gl.h>
 #include <math.h>
-
 #include "Engine/Math/MathUtils.hpp"
+#include "Engine/Renderer/TheRenderer.hpp"
 #include "Game/TheGame.hpp"
 #include "Game/TheApp.hpp"
 
-bool Asteroid::m_debugInfo = false;
+const float Asteroid::ASTEROID_SPEED = 50.0f;
+const float Asteroid::LARGE_ASTEROID_RADIUS = 80.0f;
+const float Asteroid::MEDIUM_ASTEROID_RADIUS = LARGE_ASTEROID_RADIUS / 2.f;
+const float Asteroid::SMALL_ASTEROID_RADIUS = MEDIUM_ASTEROID_RADIUS / 2.f;
+const float Asteroid::LARGE_ASTEROID_BUMP_MAGNITUDE = 10.0f;
+const float Asteroid::MEDIUM_ASTEROID_BUMP_MAGNITUDE = LARGE_ASTEROID_BUMP_MAGNITUDE;
+const float Asteroid::SMALL_ASTEROID_BUMP_MAGNITUDE = MEDIUM_ASTEROID_BUMP_MAGNITUDE / 2;
 
-Asteroid::Asteroid()
+Asteroid::Asteroid(AsteroidSize size)
 {
-	const float ASTEROID_SPEED = 50.0f;
-	const float ASTEROID_COSMETIC_RADIUS = ASTEROID_RADIUS + ASTEROID_BUMP_MAGNITUDE / 2.0f;
-	const float OUT_OF_BOUNDS_X = TheApp::instance->GetWindowWidth() + ASTEROID_COSMETIC_RADIUS;
-	const float OUT_OF_BOUNDS_Y = TheApp::instance->GetWindowHeight() + ASTEROID_COSMETIC_RADIUS;
+	m_isDead = false;
+	m_AsteroidSize = size;
 
-
-	m_physicalRadius = ASTEROID_RADIUS;
-	m_cosmeticRadius = ASTEROID_COSMETIC_RADIUS;
-
-
-	if (TheGame::GetRandom(1, 2) == 1)
-	{
-		m_position = Vector2(OUT_OF_BOUNDS_X, static_cast<float>(TheGame::GetRandom(0, static_cast<int>(TheApp::instance->GetWindowHeight()))));
-	}
-	else
-	{
-		m_position = Vector2(static_cast<float>(TheGame::GetRandom(0, static_cast<int>(TheApp::instance->GetWindowWidth()))), OUT_OF_BOUNDS_Y);
-	}
-
-	GeneratePoints(Vector2(0.0f, 0.0f), static_cast<float>(ASTEROID_RADIUS), NUM_SIDES, 0);
-
-	//Pick a random velocity and direction
-	m_angularVelocity = (float)TheGame::GetRandom(20, 40) * (TheGame::GetRandom(1, 2) == 1 ? -1.0f : 1.0f);
-
-	int randomDirectionDegrees = TheGame::GetRandom(0, 360);
-	m_velocity = Vector2(ASTEROID_SPEED * cos(static_cast<float>(randomDirectionDegrees)), ASTEROID_SPEED * sin(static_cast<float>(randomDirectionDegrees)));
+	GenerateCosmeticProperties(size);
+	SpawnOffscreen();
+	InitializeVelocities();
 }
 
+Asteroid::Asteroid(AsteroidSize size, const Vector2& spawnPosition)
+{
+	m_isDead = false;
+	m_AsteroidSize = size;
+
+	GenerateCosmeticProperties(size);
+	m_position = spawnPosition;
+	InitializeVelocities();
+}
 
 Asteroid::~Asteroid()
 {
@@ -57,41 +49,19 @@ void Asteroid::Update(float deltaTime)
 
 void Asteroid::Render() const
 {
-	glPushMatrix();
+	TheRenderer::instance->PushMatrix();
 
-	if (m_debugInfo)
-	{
-		glColor3f(0.0f, 1.0f, 1.0f);
-		glBegin(GL_POINTS);
-		{
-			glVertex2f(m_position.x, m_position.y);
-		}
-		glEnd();
-		glColor3f(0.0f, 1.0f, 0.0f);
-		DrawDebugCircle(m_position, m_cosmeticRadius);
-		glColor3f(1.0f, 0.0f, 0.0f);
-		DrawDebugCircle(m_position, m_physicalRadius);
-		glColor3f(1.0f, 1.0f, 1.0f);
-	}
+	Entity::Render();
 
-	glTranslatef(m_position.x, m_position.y, 0.0f);
-	glRotatef(m_orientation, 0.0f, 0.0f, 1.0f);
+	TheRenderer::instance->SetColor(1.f, 1.f, 1.f, 1.f);
+	TheRenderer::instance->Translate(m_position.x, m_position.y, 0.0f);
+	TheRenderer::instance->Rotate(m_orientation, 0.0f, 0.0f, 1.0f);
 
-	glBegin(GL_LINE_LOOP);
-	{
-		for (int i = 0; i < NUM_SIDES; i++)
-		{
-			glVertex2f(verts[i]->x, verts[i]->y);
-		}
-	}
-	glEnd();
-
-
-
-	glPopMatrix();
+	TheRenderer::instance->DrawLineLoop(verts, NUM_SIDES, 2.f);
+	TheRenderer::instance->PopMatrix();
 }
 
-void Asteroid::GeneratePoints(Vector2 center, float radius, int numSides, float radianOffset)
+void Asteroid::GeneratePoints(Vector2 center, float radius, int numSides, float radianOffset, float bumpMagnitude)
 {
 	const float radiansTotal = 2.0f * MathUtils::pi;
 	const float radiansPerSide = radiansTotal / numSides;
@@ -100,30 +70,61 @@ void Asteroid::GeneratePoints(Vector2 center, float radius, int numSides, float 
 	for (float radians = 0.0f; radians < radiansTotal; radians += radiansPerSide)
 	{
 		float adjustedRadians = radians + radianOffset;
-		float x = center.x + (radius * cos(adjustedRadians) + TheGame::GetRandom(0, ASTEROID_BUMP_MAGNITUDE) - (ASTEROID_BUMP_MAGNITUDE / 2.f));
-		float y = center.y + (radius * sin(adjustedRadians) + TheGame::GetRandom(0, ASTEROID_BUMP_MAGNITUDE) - (ASTEROID_BUMP_MAGNITUDE / 2.f));
+		float x = center.x + (radius * cos(adjustedRadians) + TheGame::GetRandom(0, static_cast<int>(bumpMagnitude)) - (bumpMagnitude / 2.f));
+		float y = center.y + (radius * sin(adjustedRadians) + TheGame::GetRandom(0, static_cast<int>(bumpMagnitude)) - (bumpMagnitude / 2.f));
 		verts[vertexIndex++] = new Vector2(x, y);
 	}
 
 }
 
-void Asteroid::DrawDebugCircle(Vector2 center, float radius) const
+void Asteroid::GenerateCosmeticProperties(AsteroidSize size)
 {
-	const float radiansTotal = 2.0f * MathUtils::pi;
-	const float radiansPerSide = radiansTotal / 40;
-	glBegin(GL_LINE_LOOP);
+	//Assume large to prevent uninitialized variables.
+	float asteroidSize = LARGE_ASTEROID_RADIUS;
+	float bumpMagnitude = LARGE_ASTEROID_BUMP_MAGNITUDE;
+	
+	if (size == AsteroidSize::MEDIUM)
 	{
-		for (float radians = 0.0f; radians < radiansTotal; radians += radiansPerSide)
-		{
-			float x = center.x + (radius * cos(radians));
-			float y = center.y + (radius * sin(radians));
-			glVertex2f(x, y);
-		}
+		asteroidSize = MEDIUM_ASTEROID_RADIUS;
+		bumpMagnitude = MEDIUM_ASTEROID_BUMP_MAGNITUDE;
 	}
-	glEnd();
+	else if (size == AsteroidSize::SMALL)
+	{
+		asteroidSize = SMALL_ASTEROID_RADIUS;
+		bumpMagnitude = SMALL_ASTEROID_BUMP_MAGNITUDE;
+	}
+
+	m_physicalRadius = asteroidSize;
+	m_cosmeticRadius = asteroidSize + (bumpMagnitude / 2.0f);
+
+	GeneratePoints(Vector2(0.0f, 0.0f), static_cast<float>(asteroidSize), NUM_SIDES, 0, bumpMagnitude);
 }
 
-void Asteroid::ToggleDebugDraw()
+void Asteroid::SpawnOffscreen()
 {
-	m_debugInfo = !m_debugInfo;
+	const float OUT_OF_BOUNDS_X = TheApp::instance->GetWindowWidth() + m_cosmeticRadius;
+	const float OUT_OF_BOUNDS_Y = TheApp::instance->GetWindowHeight() + m_cosmeticRadius;
+
+	if (TheGame::GetRandom(1, 2) == 1)
+	{
+		m_position = Vector2(OUT_OF_BOUNDS_X, static_cast<float>(TheGame::GetRandom(0, static_cast<int>(TheApp::instance->GetWindowHeight()))));
+	}
+	else
+	{
+		m_position = Vector2(static_cast<float>(TheGame::GetRandom(0, static_cast<int>(TheApp::instance->GetWindowWidth()))), OUT_OF_BOUNDS_Y);
+	}
+}
+
+void Asteroid::InitializeVelocities()
+{
+	//Pick a random velocity and direction
+	m_angularVelocity = (float)TheGame::GetRandom(20, 40) * (TheGame::GetRandom(1, 2) == 1 ? -1.0f : 1.0f);
+
+	int randomDirectionDegrees = TheGame::GetRandom(0, 360);
+	m_velocity = Vector2(ASTEROID_SPEED * cos(static_cast<float>(randomDirectionDegrees)), ASTEROID_SPEED * sin(static_cast<float>(randomDirectionDegrees)));
+}
+
+AsteroidSize Asteroid::GetAsteroidSize()
+{
+	return m_AsteroidSize;
 }

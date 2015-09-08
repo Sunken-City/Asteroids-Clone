@@ -1,25 +1,31 @@
 #pragma once
 #include "Game/Entity.hpp"
 
+class XInputController;
+
 class Ship : public Entity
 {
 public:
-	Ship();
+	Ship(XInputController* controller);
 	~Ship();
 
 	void Update(float time);
 	void Render() const;
-	void InitializeVerts();
-	void DrawDebugCircle(Vector2 center, float radius) const;
 	void Crash();
 	void Spawn();
-	bool IsAlive();
-	static void ToggleDebugDraw();
+	Vector2 GetNosePosition() const;
 
 private:
-	static const int NUM_VERTS = 10;
-	static const int LEFT_THRUST_INDEX = 7;
-	static const int RIGHT_THRUST_INDEX = 8;
+	void Thrust();
+	void FireWeapon();
+	void InitializeVerts();
+	void UpdateFromKeyboardControls(float deltaTime);
+	void RenderAsDead(float red, float green, float blue) const;
+
+	static const int NUM_SHIP_VERTS = 6;
+	static const int NUM_THRUST_VERTS = 4;
+	static const int LEFT_THRUST_INDEX = 1;
+	static const int RIGHT_THRUST_INDEX = 2;
 
 	static const float SHIP_LENGTH;
 	static const float SHIP_WIDTH;
@@ -28,10 +34,11 @@ private:
 	static const float THRUST_X;
 	static const float THRUST_Y;
 	static const float THRUST_VARIANCE;
+	static const float SHIP_DEATH_ANIM_SECONDS;
 
-	static bool m_debugInfo;
 
-	bool m_isAlive;
-
-	Vector2* verts[NUM_VERTS];
+	float m_thrustColor;
+	Vector2* m_shipVerts[NUM_SHIP_VERTS];
+	Vector2* m_thrustVerts[NUM_THRUST_VERTS];
+	XInputController* m_controller;
 };

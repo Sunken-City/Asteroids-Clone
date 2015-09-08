@@ -1,16 +1,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <gl/gl.h>
 #include <math.h>
 #include <cassert>
 #include <crtdbg.h>
-#pragma comment( lib, "opengl32" ) // Link in the OpenGL32.lib static library
 #include "Engine/Math/Vector2.hpp"
 #include "Engine/Time/Time.hpp"
+#include "Engine/Renderer/TheRenderer.hpp"
 #include "Game/TheApp.hpp"
 #include "Game/TheGame.hpp"
-
-
 
 //-----------------------------------------------------------------------------------------------
 #define UNUSED(x) (void)(x);
@@ -24,12 +21,14 @@ const float VIEW_LEFT = 0.0;
 const float VIEW_RIGHT = 1600.0;
 const float VIEW_BOTTOM = 0.0;
 const float VIEW_TOP = VIEW_RIGHT * static_cast<float>(WINDOW_PHYSICAL_HEIGHT) / static_cast<float>(WINDOW_PHYSICAL_WIDTH);
+const Vector2 BOTTOM_LEFT = Vector2(VIEW_LEFT, VIEW_BOTTOM);
+const Vector2 TOP_RIGHT = Vector2(VIEW_RIGHT, VIEW_TOP);
 
 bool g_isQuitting = false;
 HWND g_hWnd = nullptr;
 HDC g_displayDeviceContext = nullptr;
 HGLRC g_openGLRenderingContext = nullptr;
-const char* APP_NAME = "European Elevator Online";
+const char* APP_NAME = "Rocket-Powered Aerobics Odyssey";
 
 
 //-----------------------------------------------------------------------------------------------
@@ -129,11 +128,7 @@ void CreateOpenGLWindow(HINSTANCE applicationInstanceHandle)
 	wglMakeCurrent(g_displayDeviceContext, g_openGLRenderingContext);
 
 	//Used to set up 2D coordinates. Set a value for your top left and bottom right points, and you'll create a coordinate system for that.
-	glOrtho(VIEW_LEFT, VIEW_RIGHT, VIEW_BOTTOM, VIEW_TOP, 0.f, 1.f);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glLineWidth(2.f);
-	glEnable(GL_LINE_SMOOTH);
+	TheRenderer::instance->SetOrtho(BOTTOM_LEFT, TOP_RIGHT);
 }
 
 
@@ -168,8 +163,7 @@ void Update()
 //-----------------------------------------------------------------------------------------------
 void Render()
 {
-	glClearColor(0.0f, 0.0f, 0.0f, 1.f);
-	glClear(GL_COLOR_BUFFER_BIT);
+	TheRenderer::instance->ClearScreen(0.f, 0.f, 0.f);
 	TheGame::instance->Render();
 	SwapBuffers(g_displayDeviceContext);
 }
@@ -178,6 +172,7 @@ void Render()
 //-----------------------------------------------------------------------------------------------
 void RunFrame()
 {
+	TheApp::instance->AdvanceFrameNumber();
 	RunMessagePump();
 	Update();
 	Render();
@@ -189,7 +184,7 @@ void Initialize(HINSTANCE applicationInstanceHandle)
 {
 	CreateOpenGLWindow(applicationInstanceHandle);
 	TheApp::instance = new TheApp(VIEW_RIGHT, VIEW_TOP);
-
+	TheRenderer::instance = new TheRenderer();
 	TheGame::instance = new TheGame();
 }
 
@@ -199,6 +194,8 @@ void Shutdown()
 {
 	delete TheApp::instance;
 	TheApp::instance = nullptr;
+	delete TheRenderer::instance;
+	TheRenderer::instance = nullptr;
 	delete TheGame::instance;
 	TheGame::instance = nullptr;
 }
